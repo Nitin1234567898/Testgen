@@ -92,7 +92,7 @@ function App() {
             </span>
           </h1>
           <p className="text-gray-400 text-center text-lg max-w-2xl mx-auto">
-            Generate Java Selenium test cases and implementation steps using Gemini AI.
+            Generate Java Selenium test cases and implementation steps using  AI.
           </p>
         </div>
       </header>
