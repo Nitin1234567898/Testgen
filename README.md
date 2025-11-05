@@ -7,7 +7,7 @@ A modern, dark-themed web application for generating Java Selenium test cases us
 - 🎨 **Modern Dark Theme**: Clean black and blue aesthetic inspired by VS Code and Vercel
 - ⚡ **Fast & Responsive**: Built with Vite for lightning-fast development and builds
 - ☕ **Java Focus**: Generate comprehensive Java Selenium test cases with TestNG framework
-- 🤖 **Gorq AI Integration**: Powered by OpenAI's Gorq AI for intelligent test generation
+- 🤖 **Groq AI Integration**:Built using Groq’s OpenAI-compatible API for fast and intelligent test generation.
 - 📱 **Mobile-Friendly**: Fully responsive design that works on all devices
 - ✨ **Smooth Animations**: Beautiful transitions and loading states
 - 🔧 **Syntax Highlighting**: Properly formatted Java code output
