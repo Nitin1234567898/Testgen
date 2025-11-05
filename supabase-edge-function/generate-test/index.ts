@@ -50,12 +50,15 @@ serve(async (req) => {
 
     // Build messages for Groq Chat Completions
     const systemMessage = `You are an expert Java Selenium test automation engineer.
-Generate a complete Java Selenium test case with TestNG framework and return ONLY JSON.`;
+Generate a complete Java Selenium test case with TestNG framework and return ONLY valid JSON.
+Do NOT wrap the JSON in markdown code blocks or add any explanatory text. Return pure JSON only.`;
 
     const userMessage = `Description: ${description}
 
-Provide strictly this JSON structure with no extra text:
+Provide strictly this JSON structure with no extra text, no markdown formatting, no code blocks:
 {"steps": ["step 1", "step 2", "step 3"], "code": "<complete Java code>"}
+
+IMPORTANT: Return ONLY the JSON object, nothing else. Do not use markdown code blocks or add any text before or after the JSON.
 
 Constraints:
 - Use TestNG annotations (@BeforeMethod, @Test, @AfterMethod)
@@ -95,20 +98,77 @@ Constraints:
     // Parse the JSON response from Groq
     let parsedResponse;
     try {
-      // Try to extract JSON from the response (in case it's wrapped in markdown)
-      const jsonMatch = text.match(/\{[\s\S]*\}/);
-      if (jsonMatch) {
-        parsedResponse = JSON.parse(jsonMatch[0]);
-      } else {
+      // Try multiple parsing strategies in order of preference
+      let jsonText: string | null = null;
+      
+      // Strategy 1: Try parsing the entire text as JSON (most common case)
+      try {
         parsedResponse = JSON.parse(text);
+        // If successful, skip to validation
+      } catch {
+        // Strategy 2: Try to extract from markdown code blocks (```json ... ``` or ``` ... ```)
+        // Use a more robust regex that handles multiline JSON
+        const markdownMatch = text.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
+        if (markdownMatch && markdownMatch[1]) {
+          const markdownContent = markdownMatch[1].trim();
+          // Try to find JSON object in the markdown content
+          const jsonInMarkdown = markdownContent.match(/\{[\s\S]*\}/);
+          if (jsonInMarkdown) {
+            jsonText = jsonInMarkdown[0];
+          } else {
+            jsonText = markdownContent;
+          }
+        }
+        
+        // Strategy 3: Try to find JSON object by finding balanced braces
+        if (!jsonText) {
+          let jsonStart = text.indexOf('{');
+          if (jsonStart !== -1) {
+            let braceCount = 0;
+            let jsonEnd = -1;
+            
+            for (let i = jsonStart; i < text.length; i++) {
+              if (text[i] === '{') {
+                braceCount++;
+              } else if (text[i] === '}') {
+                braceCount--;
+                if (braceCount === 0) {
+                  jsonEnd = i;
+                  break;
+                }
+              }
+            }
+            
+            if (jsonEnd !== -1) {
+              jsonText = text.substring(jsonStart, jsonEnd + 1);
+            }
+          }
+        }
+        
+        // Strategy 4: Fallback to simple regex match (original behavior)
+        if (!jsonText) {
+          const simpleMatch = text.match(/\{[\s\S]*\}/);
+          if (simpleMatch) {
+            jsonText = simpleMatch[0];
+          }
+        }
+        
+        // If we found JSON text, parse it
+        if (jsonText) {
+          parsedResponse = JSON.parse(jsonText);
+        } else {
+          throw new Error("Could not extract JSON from response");
+        }
       }
     } catch (parseError) {
       // If parsing fails, return the raw text with a fallback structure
       console.error("Failed to parse Groq response:", parseError);
+      console.error("Raw response text:", text);
       return new Response(
         JSON.stringify({
           error: "Failed to parse AI response",
           rawResponse: text,
+          parseError: parseError instanceof Error ? parseError.message : String(parseError),
         }),
         {
           status: 500,
