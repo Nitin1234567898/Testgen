@@ -17,7 +17,7 @@ A modern, dark-themed web application for generating Java Selenium test cases us
 
 - **Frontend**: React 18, Vite, Tailwind CSS
 - **Backend**: Supabase (for API and database)
-- **AI**: Google Gemini AI API
+- **AI**: Groq AI API
 - **Fonts**: Inter (UI), Fira Code (code blocks)
 
 ## Getting Started
@@ -59,7 +59,7 @@ The built files will be in the `dist` directory.
 
 1. Enter a description of the Java test scenario you want to generate
 2. Click "Generate Java Test Case" 
-3. Wait for Gemini AI to process your request (simulated with a 2-second delay)
+3. Wait for Groq AI to process your request (simulated with a 2-second delay)
 4. Review the generated test steps and Java code with TestNG framework
 5. Use the "Reset" button to start over
 
@@ -67,7 +67,7 @@ The built files will be in the `dist` directory.
 
 The frontend is prepared for integration with a Supabase backend that will handle:
 
-- **Gemini AI API calls** for test case generation
+- **Groq AI API calls** for test case generation
 - **Database storage** for test case history
 - **User authentication** (if needed)
 - **API rate limiting** and error handling
@@ -132,6 +132,4 @@ code, pre {
 3. Make your changes
 4. Submit a pull request
 
-## License
 
-MIT License - see LICENSE file for details.
