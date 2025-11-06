@@ -6,18 +6,37 @@ const ResultBox = ({ steps, code }) => {
   const [formattedCode, setFormattedCode] = useState("");
   const [copyStatus, setCopyStatus] = useState("Copy");
   const [downloadStatus, setDownloadStatus] = useState("Download");
+  const [isFormatting, setIsFormatting] = useState(false);
 
+  // 🧠 Supabase function URL
+  const SUPABASE_FUNCTION_URL =
+    "https://bfmlmpbrwlzpcmcmplgy.supabase.co/functions/v1/format-java";
+
+  // 🧩 Debug info for Prettier (safe to keep)
+  useEffect(() => {
+    try {
+      console.log("✅ Prettier Support Info:", prettier.getSupportInfo());
+    } catch (err) {
+      console.warn("⚠️ Could not retrieve Prettier support info:", err);
+    }
+  }, []);
+
+  // 🧠 Format the generated Java code (local first, backend fallback)
   useEffect(() => {
     if (!code) return;
 
     const formatCode = async () => {
+      setIsFormatting(true);
+
       try {
+        // Decode the escaped newlines/tabs
         const decoded = code
           ?.replace(/\\n/g, "\n")
           .replace(/\\t/g, "    ")
           .replace(/\\"/g, '"')
           .trim();
 
+        // 🔹 Try local Prettier formatting
         const pretty = await prettier.format(decoded, {
           parser: "java",
           plugins: [prettierPluginJava],
@@ -25,27 +44,64 @@ const ResultBox = ({ steps, code }) => {
 
         setFormattedCode(pretty);
       } catch (err) {
-        console.error("Java code formatting failed:", err);
-        setFormattedCode(
-          code
+        console.warn("⚠️ Local Prettier failed, using Supabase backend...", err);
+
+        try {
+          // 🔹 Fallback to Supabase backend formatter
+          const response = await fetch(SUPABASE_FUNCTION_URL, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ code }),
+          });
+
+          const data = await response.json();
+
+          if (response.ok && data.formatted) {
+            console.log("✅ Received formatted code from Supabase");
+            setFormattedCode(data.formatted);
+          } else {
+            console.error("❌ Backend formatting failed:", data.error);
+            // Minimal readable fallback
+            const fallback = code
+              ?.replace(/\\n/g, "\n")
+              .replace(/\\t/g, "    ")
+              .replace(/\\"/g, '"')
+              .replace(/;/g, ";\n")
+              .replace(/\{/g, "{\n")
+              .replace(/\}/g, "\n}\n")
+              .trim();
+            setFormattedCode(fallback);
+          }
+        } catch (backendErr) {
+          console.error("❌ Could not reach Supabase formatter:", backendErr);
+
+          // Final fallback
+          const fallback = code
             ?.replace(/\\n/g, "\n")
             .replace(/\\t/g, "    ")
             .replace(/\\"/g, '"')
-        );
+            .replace(/;/g, ";\n")
+            .replace(/\{/g, "{\n")
+            .replace(/\}/g, "\n}\n")
+            .trim();
+          setFormattedCode(fallback);
+        }
+      } finally {
+        setIsFormatting(false);
       }
     };
 
     formatCode();
   }, [code]);
 
-  // ✅ Copy function with animation feedback
+  // ✅ Copy with animation
   const handleCopy = async () => {
     await navigator.clipboard.writeText(formattedCode);
     setCopyStatus("Copied!");
     setTimeout(() => setCopyStatus("Copy"), 1500);
   };
 
-  // ✅ Download function with animation feedback
+  // ✅ Download with animation
   const handleDownload = () => {
     const blob = new Blob([formattedCode], { type: "text/plain" });
     const link = document.createElement("a");
@@ -86,38 +142,35 @@ const ResultBox = ({ steps, code }) => {
             <span className="text-gray-400 text-sm ml-3">LoginTest.java</span>
           </div>
 
-          {/* Animated Buttons */}
           <div className="flex space-x-2">
             <button
               onClick={handleCopy}
-              className={`text-xs px-3 py-1.5 rounded-md border border-accent-blue transition-all duration-200
-                ${
-                  copyStatus === "Copied!"
-                    ? "bg-accent-blue text-white scale-105"
-                    : "text-accent-blue hover:bg-accent-blue hover:text-white hover:scale-105"
-                }`}
+              className={`text-xs px-3 py-1.5 rounded-md border border-accent-blue transition-all duration-200 ${
+                copyStatus === "Copied!"
+                  ? "bg-accent-blue text-white scale-105"
+                  : "text-accent-blue hover:bg-accent-blue hover:text-white hover:scale-105"
+              }`}
             >
               {copyStatus}
             </button>
 
             <button
               onClick={handleDownload}
-              className={`text-xs px-3 py-1.5 rounded-md border border-gray-500 transition-all duration-200
-                ${
-                  downloadStatus === "Saved!"
-                    ? "bg-green-600 text-white scale-105"
-                    : "text-gray-300 hover:bg-green-600 hover:text-white hover:scale-105"
-                }`}
+              className={`text-xs px-3 py-1.5 rounded-md border border-gray-500 transition-all duration-200 ${
+                downloadStatus === "Saved!"
+                  ? "bg-green-600 text-white scale-105"
+                  : "text-gray-300 hover:bg-green-600 hover:text-white hover:scale-105"
+              }`}
             >
               {downloadStatus}
             </button>
           </div>
         </div>
 
-        <pre className="p-6 overflow-x-auto whitespace-pre">
-          <code className="text-gray-300 font-mono text-sm leading-relaxed">
-            {formattedCode || "// No code generated yet"}
-          </code>
+        <pre className="p-6 overflow-x-auto whitespace-pre text-gray-300 font-mono text-sm leading-relaxed">
+          {isFormatting
+            ? "// Formatting code..."
+            : formattedCode || "// No code generated yet"}
         </pre>
       </div>
     </div>
