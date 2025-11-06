@@ -1,253 +1,122 @@
-# Supabase Edge Function - Copy-Paste Ready Code
-
-This is the complete TypeScript code you can copy-paste directly into your Supabase Edge Function.
-
-## Function Name: `generate-test`
-
-## Complete Code (Copy this entire code block):
-
-```typescript
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers":
-    "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type"
 };
-
-interface RequestBody {
-  description: string;
-}
-
-serve(async (req) => {
-  // Handle CORS preflight requests
+serve(async (req)=>{
   if (req.method === "OPTIONS") {
-    return new Response("ok", { headers: corsHeaders });
+    return new Response("ok", {
+      headers: corsHeaders
+    });
   }
-
   try {
-    // Get the Gemini API key from Supabase environment variables
-    const geminiApiKey = Deno.env.get("GEMINI_API_KEY");
-    
-    if (!geminiApiKey) {
-      return new Response(
-        JSON.stringify({ error: "GEMINI_API_KEY is not set in Supabase secrets" }),
-        {
-          status: 500,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        }
-      );
+    // ✅ 1. Check API Key
+    const groqApiKey = Deno.env.get("GROQ_API_KEY");
+    if (!groqApiKey) {
+      return jsonError("GROQ_API_KEY is not set in Supabase secrets", 500);
     }
-
-    // Parse request body
-    const { description }: RequestBody = await req.json();
-
-    if (!description || !description.trim()) {
-      return new Response(
-        JSON.stringify({ error: "Description is required" }),
-        {
-          status: 400,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        }
-      );
+    // ✅ 2. Parse input
+    const { description } = await req.json();
+    if (!description?.trim()) {
+      return jsonError("Description is required", 400);
     }
+    // ✅ 3. Build prompt
+    const systemMessage = `
+You are an expert Java Selenium test automation engineer.
+Return output STRICTLY as a valid JSON object — nothing else.
+Format:
+{"steps": ["step 1", "step 2"], "code": "<escaped Java code as single line>"}
+All quotes and backslashes inside "code" must be escaped properly.
+Do NOT use markdown, code blocks, or any explanation text.`;
+    const userMessage = `Description: ${description}
 
-    // Create a comprehensive prompt for generating Selenium test cases
-    const prompt = `You are an expert Java Selenium test automation engineer. Generate a complete Java Selenium test case with TestNG framework based on the following description:
-
-${description}
-
-Please provide:
-1. A list of test steps (as an array of strings)
-2. Complete Java code implementation using Selenium WebDriver with TestNG framework
-
-Requirements:
+Constraints:
 - Use TestNG annotations (@BeforeMethod, @Test, @AfterMethod)
-- Use WebDriverWait for explicit waits
-- Include proper error handling
-- Use modern Selenium practices (Duration instead of deprecated methods)
-- Include meaningful assertions
-- Add comments for clarity
-
-Format your response as a JSON object with this exact structure:
-{
-  "steps": ["step 1", "step 2", "step 3", ...],
-  "code": "complete Java code here"
-}
-
-Only return the JSON object, no additional text or markdown formatting.`;
-
-    // Dynamically discover available models using ListModels API
-    // This is a permanent fix that adapts to API changes
-    let availableModel = null;
-    const apiVersions = ["v1beta", "v1"];
-    
-    for (const version of apiVersions) {
-      try {
-        const listUrl = `https://generativelanguage.googleapis.com/${version}/models?key=${geminiApiKey}`;
-        const listResponse = await fetch(listUrl);
-        
-        if (listResponse.ok) {
-          const listData = await listResponse.json();
-          const models = listData.models || [];
-          
-          // Find first model that supports generateContent
-          for (const model of models) {
-            const supportedMethods = model.supportedGenerationMethods || [];
-            if (supportedMethods.includes("generateContent")) {
-              availableModel = {
-                name: model.name.replace(`models/`, ""),
-                version: version
-              };
-              break;
-            }
-          }
-          
-          if (availableModel) break;
-        }
-      } catch (err) {
-        continue;
-      }
-    }
-
-    // Fallback to common models if listModels fails
-    if (!availableModel) {
-      const fallbackModels = [
-        { name: "gemini-pro", version: "v1beta" },
-        { name: "gemini-1.0-pro", version: "v1beta" }
-      ];
-      
-      for (const model of fallbackModels) {
-        try {
-          const testUrl = `https://generativelanguage.googleapis.com/${model.version}/models/${model.name}:generateContent?key=${geminiApiKey}`;
-          const testResponse = await fetch(testUrl, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ contents: [{ parts: [{ text: "test" }] }] })
-          });
-          
-          if (testResponse.ok || testResponse.status === 400) {
-            availableModel = model;
-            break;
-          }
-        } catch {
-          continue;
-        }
-      }
-    }
-
-    if (!availableModel) {
-      throw new Error("Could not find any available Gemini models.");
-    }
-
-    // Call Gemini API with discovered model
-    const apiUrl = `https://generativelanguage.googleapis.com/${availableModel.version}/models/${availableModel.name}:generateContent?key=${geminiApiKey}`;
-    
-    const apiResponse = await fetch(apiUrl, {
+- Use WebDriverWait (explicit waits)
+- Use modern Selenium (Duration)
+- Use assertTrue/assertEquals
+- Escape all quotes inside the JSON properly.`;
+    // ✅ 4. Call Groq API
+    const apiResponse = await fetch("https://api.groq.com/openai/v1/chat/completions", {
       method: "POST",
       headers: {
-        "Content-Type": "application/json",
+        "Authorization": `Bearer ${groqApiKey}`,
+        "Content-Type": "application/json"
       },
       body: JSON.stringify({
-        contents: [{
-          parts: [{
-            text: prompt
-          }]
-        }]
+        model: "llama-3.3-70b-versatile",
+        temperature: 0.3,
+        messages: [
+          {
+            role: "system",
+            content: systemMessage
+          },
+          {
+            role: "user",
+            content: userMessage
+          }
+        ]
       })
     });
-
     if (!apiResponse.ok) {
-      const errorText = await apiResponse.text();
-      throw new Error(`Gemini API error: ${apiResponse.status} - ${errorText}`);
+      const errText = await apiResponse.text();
+      throw new Error(`Groq API error ${apiResponse.status}: ${errText}`);
     }
-
-    const responseData = await apiResponse.json();
-    
-    // Extract text from Gemini API response
-    const text = responseData.candidates?.[0]?.content?.parts?.[0]?.text;
-    
-    if (!text) {
-      throw new Error("No response from Gemini API");
-    }
-
-    // Parse the JSON response from Gemini
-    let parsedResponse;
+    // ✅ 5. Extract AI response text
+    const data = await apiResponse.json();
+    const text = data?.choices?.[0]?.message?.content?.trim();
+    if (!text) throw new Error("Empty response from Groq API");
+    // ✅ 6. Clean and sanitize text before parsing
+    let cleaned = text.trim().replace(/^[^\{]*/, "") // remove junk before {
+    .replace(/[^\}]*$/, "") // remove junk after }
+    .replace(/[\u0000-\u001F\u007F-\u009F]/g, ""); // remove control chars
+    // ✅ 7. Attempt parsing
+    let parsed;
     try {
-      // Try to extract JSON from the response (in case it's wrapped in markdown)
-      const jsonMatch = text.match(/\{[\s\S]*\}/);
-      if (jsonMatch) {
-        parsedResponse = JSON.parse(jsonMatch[0]);
-      } else {
-        parsedResponse = JSON.parse(text);
+      parsed = JSON.parse(cleaned);
+    } catch (err) {
+      // 💡 Attempt to auto-fix common JSON issues
+      try {
+        cleaned = cleaned.replace(/\n/g, "\\n") // escape newlines
+        .replace(/\r/g, "\\r").replace(/\t/g, "\\t").replace(/\\/g, "\\\\") // escape backslashes
+        .replace(/\"([^"]*?)\"(?=\s*[:,}])/g, (m)=>m.replace(/\"/g, '\\"')); // escape unescaped quotes
+        parsed = JSON.parse(cleaned);
+      } catch (err2) {
+        console.error("Failed to parse JSON:", err2, "\nRaw:", text);
+        return jsonError("Failed to parse AI response", 500, {
+          rawResponse: text
+        });
       }
-    } catch (parseError) {
-      // If parsing fails, return the raw text with a fallback structure
-      console.error("Failed to parse Gemini response:", parseError);
-      return new Response(
-        JSON.stringify({
-          error: "Failed to parse AI response",
-          rawResponse: text,
-        }),
-        {
-          status: 500,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        }
-      );
     }
-
-    // Validate the response structure
-    if (!parsedResponse.steps || !parsedResponse.code) {
-      return new Response(
-        JSON.stringify({
-          error: "Invalid response format from AI",
-          rawResponse: parsedResponse,
-        }),
-        {
-          status: 500,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        }
-      );
+    // ✅ 8. Validate structure
+    if (!parsed.steps || !parsed.code) {
+      return jsonError("Invalid response structure", 500, {
+        rawResponse: parsed
+      });
     }
-
-    // Return the formatted response
-    return new Response(
-      JSON.stringify({
-        steps: parsedResponse.steps,
-        code: parsedResponse.code,
-      }),
-      {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
+    // ✅ 9. Sanitize code string again before sending
+    parsed.code = parsed.code.replace(/\r/g, "").replace(/\t/g, "  ").replace(/\\n/g, "\n");
+    // ✅ 10. Return clean JSON
+    return new Response(JSON.stringify(parsed), {
+      headers: {
+        ...corsHeaders,
+        "Content-Type": "application/json"
       }
-    );
-  } catch (error) {
-    console.error("Error in edge function:", error);
-    return new Response(
-      JSON.stringify({
-        error: error.message || "An unexpected error occurred",
-      }),
-      {
-        status: 500,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      }
-    );
+    });
+  } catch (err) {
+    console.error("Edge function error:", err);
+    return jsonError(err.message || "Unexpected server error", 500);
   }
 });
-```
-
-## Quick Setup Steps:
-
-1. **Go to Supabase Dashboard** → Edge Functions → Create Function
-2. **Name it**: `generate-test`
-3. **Copy the code above** and paste it into the editor
-4. **Add Secret**: Go to Project Settings → Edge Functions → Secrets
-   - Add `GEMINI_API_KEY` with your Gemini API key
-5. **Deploy** the function
-6. **Configure frontend**: Add environment variables to your `.env` file:
-   ```
-   VITE_SUPABASE_URL=your-project-url
-   VITE_SUPABASE_ANON_KEY=your-anon-key
-   ```
-
-That's it! Your frontend is already configured to call this function.
-
+function jsonError(message, status = 500, extra = {}) {
+  return new Response(JSON.stringify({
+    error: message,
+    ...extra
+  }), {
+    status,
+    headers: {
+      ...corsHeaders,
+      "Content-Type": "application/json"
+    }
+  });
+}
